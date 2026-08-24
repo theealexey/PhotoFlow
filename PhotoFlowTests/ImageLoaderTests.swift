@@ -1,12 +1,241 @@
 import Foundation
 import Synchronization
 import Testing
+import UIKit
 
 @testable import PhotoFlow
 
 @Suite(.serialized)
 struct ImageLoaderTests {
+    
+    @Test
+    func cacheMissLoadsFromNetworkAndStoresDataInMemoryAndDisk() async throws {
+        let fileManager = FileManager.default
 
+        let directoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                UUID().uuidString,
+                isDirectory: true
+            )
+
+        defer {
+            try? fileManager.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let memoryCache = ImageDataMemoryCache()
+
+        let diskCache = try DiskImageCache(
+            fileManager: fileManager,
+            directoryURL: directoryURL
+        )
+
+        guard let url = URL(
+            string: "https://example.com/network-disk-image.png"
+        ) else {
+            Issue.record("Expected valid test URL")
+            return
+        }
+
+        guard let imageData = makeValidImageData() else {
+            Issue.record("Expected valid image data")
+            return
+        }
+
+        #expect(
+            memoryCache.data(for: url) == nil
+        )
+
+        let initialDiskData = await readDiskData(
+            from: diskCache,
+            for: url
+        )
+
+        #expect(initialDiskData == nil)
+
+        URLProtocolStub.prepare(
+            responseData: imageData
+        )
+
+        let session = makeStubbedSession()
+
+        let imageLoader = ImageLoader(
+            session: session,
+            memoryCache: memoryCache,
+            diskCache: diskCache
+        )
+
+        let result = await loadImage(
+            using: imageLoader,
+            from: url
+        )
+
+        switch result {
+        case .success:
+            break
+
+        case .failure(let error):
+            Issue.record(
+                "Expected successful image load, received \(error)"
+            )
+        }
+
+        #expect(
+            URLProtocolStub.requestCount == 1
+        )
+
+        #expect(
+            memoryCache.data(for: url) == imageData
+        )
+
+        let storedDiskData = await readDiskData(
+            from: diskCache,
+            for: url
+        )
+
+        #expect(
+            storedDiskData == imageData
+        )
+    }
+    
+    private func loadImage(
+        using imageLoader: ImageLoader,
+        from url: URL
+    ) async -> Result<UIImage, ImageLoadError> {
+        var request: ImageLoadRequest?
+
+        let result = await withCheckedContinuation { continuation in
+            request = imageLoader.loadImage(
+                from: url
+            ) { result in
+                continuation.resume(
+                    returning: result
+                )
+            }
+        }
+
+        withExtendedLifetime(request) {}
+
+        return result
+    }
+
+    private func readDiskData(
+        from diskCache: DiskImageCache,
+        for url: URL
+    ) async -> Data? {
+        await withCheckedContinuation { continuation in
+            diskCache.data(
+                for: url
+            ) { data in
+                continuation.resume(
+                    returning: data
+                )
+            }
+        }
+    }
+    
+    @Test
+    func diskCacheHitDoesNotStartNetworkRequestAndPromotesDataToMemory() throws {
+        let fileManager = FileManager.default
+
+        let directoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                UUID().uuidString,
+                isDirectory: true
+            )
+
+        defer {
+            try? fileManager.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let memoryCache = ImageDataMemoryCache()
+
+        let diskCache = try DiskImageCache(
+            fileManager: fileManager,
+            directoryURL: directoryURL
+        )
+
+        guard let url = URL(
+            string: "https://example.com/disk-image.png"
+        ) else {
+            Issue.record("Expected valid test URL")
+            return
+        }
+
+        guard let imageData = makeValidImageData() else {
+            Issue.record("Expected valid image data")
+            return
+        }
+
+        diskCache.insert(
+            imageData,
+            for: url
+        )
+
+        #expect(
+            memoryCache.data(for: url) == nil
+        )
+
+        URLProtocolStub.prepare(
+            responseData: imageData
+        )
+
+        let session = makeStubbedSession()
+
+        let imageLoader = ImageLoader(
+            session: session,
+            memoryCache: memoryCache,
+            diskCache: diskCache
+        )
+
+        let completionResult = Mutex<Bool?>(nil)
+
+        let completionSemaphore = DispatchSemaphore(
+            value: 0
+        )
+
+        let request = imageLoader.loadImage(
+            from: url
+        ) { result in
+            completionResult.withLock { value in
+                switch result {
+                case .success:
+                    value = true
+
+                case .failure:
+                    value = false
+                }
+            }
+
+            completionSemaphore.signal()
+        }
+
+        withExtendedLifetime(request) {
+            let waitResult = completionSemaphore.wait(
+                timeout: .now() + 1
+            )
+
+            #expect(waitResult == .success)
+        }
+
+        let didSucceed = completionResult.withLock { value in
+            value
+        }
+
+        #expect(didSucceed == true)
+
+        #expect(
+            URLProtocolStub.requestCount == 0
+        )
+
+        #expect(
+            memoryCache.data(for: url) == imageData
+        )
+    }
+    
     @Test
     func cacheHitDoesNotStartNetworkRequest() {
         let cache = ImageDataMemoryCache()
@@ -300,3 +529,4 @@ private final class URLProtocolStub: URLProtocol {
 
     override func stopLoading() {}
 }
+

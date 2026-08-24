@@ -15,7 +15,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         let photoAPI = PhotoAPI()
 
-        let imageLoader = ImageLoader()
+        let diskCache = try? DiskImageCache()
+
+        let imageLoader = ImageLoader(
+            diskCache: diskCache
+        )
 
         let viewController = PhotoListViewController(
             photoFetcher: photoAPI,

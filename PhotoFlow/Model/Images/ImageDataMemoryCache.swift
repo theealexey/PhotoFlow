@@ -1,17 +1,14 @@
 import Foundation
+import Synchronization
 
-final class ImageDataMemoryCache {
+final class ImageDataMemoryCache: Sendable {
 
-    private var storage: [URL: Data] = [:]
-
-    private let synchronizationQueue = DispatchQueue(
-        label: "com.alexeywestergaard.PhotoFlow.image-data-cache",
-        qos: .utility,
-        attributes: .concurrent
+    private let storage = Mutex<[URL: Data]>(
+        [:]
     )
 
     func data(for url: URL) -> Data? {
-        synchronizationQueue.sync {
+        storage.withLock { storage in
             storage[url]
         }
     }
@@ -20,9 +17,7 @@ final class ImageDataMemoryCache {
         _ data: Data,
         for url: URL
     ) {
-        synchronizationQueue.sync(
-            flags: .barrier
-        ) {
+        storage.withLock { storage in
             storage[url] = data
         }
     }
