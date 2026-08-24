@@ -9,12 +9,12 @@ final class PhotoListViewController: UIViewController {
     private var photos: [Photo] = []
     private var fetchTask: URLSessionDataTask?
     private var imageRequests: [String: ActiveImageRequest] = [:]
-    
+
     private struct ActiveImageRequest {
         let id: UUID
-        let request: ImageLoadRequest
+        var request: ImageLoadRequest?
     }
-    
+
     init(
         photoFetcher: any PhotoFetching,
         imageLoader: any ImageLoading
@@ -44,10 +44,10 @@ final class PhotoListViewController: UIViewController {
 
         contentView.collectionView.delegate = self
         contentView.collectionView.dataSource = self
-        
+
         loadPhotos()
     }
-    
+
     private func loadPhotos() {
         fetchTask?.cancel()
 
@@ -73,13 +73,16 @@ final class PhotoListViewController: UIViewController {
             }
         }
     }
-    
-    private func loadImage(
-        for photo: Photo
-    ) {
-        imageRequests[photo.id]?.request.cancel()
+
+    private func loadImage(for photo: Photo) {
+        imageRequests[photo.id]?.request?.cancel()
 
         let requestID = UUID()
+
+        imageRequests[photo.id] = ActiveImageRequest(
+            id: requestID,
+            request: nil
+        )
 
         let request = imageLoader.loadImage(
             from: photo.imageURL
@@ -108,12 +111,14 @@ final class PhotoListViewController: UIViewController {
             }
         }
 
-        imageRequests[photo.id] = ActiveImageRequest(
-            id: requestID,
-            request: request
-        )
+        guard imageRequests[photo.id]?.id == requestID else {
+            request.cancel()
+            return
+        }
+
+        imageRequests[photo.id]?.request = request
     }
-    
+
     private func displayImage(
         _ image: UIImage,
         for photo: Photo
@@ -140,7 +145,7 @@ final class PhotoListViewController: UIViewController {
             for: photo.id
         )
     }
-    
+
     private func showLoadingError() {
         let alertController = UIAlertController(
             title: "Unable to Load Photos",
@@ -199,7 +204,7 @@ extension PhotoListViewController: UICollectionViewDelegateFlowLayout {
 
         let photo = photos[indexPath.item]
 
-        imageRequests[photo.id]?.request.cancel()
+        imageRequests[photo.id]?.request?.cancel()
         imageRequests[photo.id] = nil
     }
 }
@@ -230,7 +235,7 @@ extension PhotoListViewController: UICollectionViewDataSource {
             photoID: photo.id,
             author: photo.author
         )
-        
+
         loadImage(
             for: photo
         )

@@ -7,7 +7,9 @@ protocol ImageLoading {
     @discardableResult
     func loadImage(
         from url: URL,
-        completion: @escaping @Sendable (Result<UIImage, ImageLoadError>) -> Void
+        completion: @escaping @Sendable (
+            Result<UIImage, ImageLoadError>
+        ) -> Void
     ) -> ImageLoadRequest
 }
 
@@ -20,11 +22,11 @@ enum ImageLoadError: Error, Equatable, Sendable {
 
 final class ImageLoadRequest {
 
-    private let networkTask: URLSessionDataTask
+    private let networkTask: URLSessionDataTask?
     private let cancellationState: ImageLoadCancellationState
 
     init(
-        networkTask: URLSessionDataTask,
+        networkTask: URLSessionDataTask?,
         cancellationState: ImageLoadCancellationState
     ) {
         self.networkTask = networkTask
@@ -33,9 +35,9 @@ final class ImageLoadRequest {
 
     func cancel() {
         cancellationState.cancel()
-        networkTask.cancel()
+        networkTask?.cancel()
     }
-    
+
     deinit {
         cancel()
     }
@@ -44,12 +46,15 @@ final class ImageLoadRequest {
 final class ImageLoader: ImageLoading {
 
     private let session: URLSession
+    private let memoryCache: ImageDataMemoryCache
     private let imageProcessingQueue: DispatchQueue
 
     init(
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        memoryCache: ImageDataMemoryCache = ImageDataMemoryCache()
     ) {
         self.session = session
+        self.memoryCache = memoryCache
 
         imageProcessingQueue = DispatchQueue(
             label: "com.alexeywestergaard.PhotoFlow.image-processing",
@@ -61,13 +66,37 @@ final class ImageLoader: ImageLoading {
     @discardableResult
     func loadImage(
         from url: URL,
-        completion: @escaping @Sendable (Result<UIImage, ImageLoadError>) -> Void
+        completion: @escaping @Sendable (
+            Result<UIImage, ImageLoadError>
+        ) -> Void
     ) -> ImageLoadRequest {
         let cancellationState = ImageLoadCancellationState()
 
+        if let cachedData = memoryCache.data(for: url) {
+            let request = ImageLoadRequest(
+                networkTask: nil,
+                cancellationState: cancellationState
+            )
+
+            let workItem = Self.makeImageProcessingWorkItem(
+                data: cachedData,
+                url: url,
+                shouldCache: false,
+                memoryCache: memoryCache,
+                cancellationState: cancellationState,
+                completion: completion
+            )
+
+            imageProcessingQueue.async(
+                execute: workItem
+            )
+
+            return request
+        }
+
         let networkTask = session.dataTask(
             with: url
-        ) { [imageProcessingQueue] data, response, error in
+        ) { [memoryCache, imageProcessingQueue] data, response, error in
             guard !cancellationState.isCancelled else {
                 return
             }
@@ -80,6 +109,7 @@ final class ImageLoader: ImageLoading {
                 completion(
                     .failure(.network)
                 )
+
                 return
             }
 
@@ -90,6 +120,7 @@ final class ImageLoader: ImageLoading {
                 completion(
                     .failure(.invalidResponse)
                 )
+
                 return
             }
 
@@ -97,29 +128,18 @@ final class ImageLoader: ImageLoading {
                 completion(
                     .failure(.missingData)
                 )
+
                 return
             }
 
-            let workItem = DispatchWorkItem {
-                guard !cancellationState.isCancelled else {
-                    return
-                }
-
-                guard let image = UIImage(data: data) else {
-                    completion(
-                        .failure(.imageCreationFailed)
-                    )
-                    return
-                }
-
-                guard !cancellationState.isCancelled else {
-                    return
-                }
-
-                completion(
-                    .success(image)
-                )
-            }
+            let workItem = Self.makeImageProcessingWorkItem(
+                data: data,
+                url: url,
+                shouldCache: true,
+                memoryCache: memoryCache,
+                cancellationState: cancellationState,
+                completion: completion
+            )
 
             imageProcessingQueue.async(
                 execute: workItem
@@ -134,6 +154,46 @@ final class ImageLoader: ImageLoading {
         networkTask.resume()
 
         return request
+    }
+
+    private static func makeImageProcessingWorkItem(
+        data: Data,
+        url: URL,
+        shouldCache: Bool,
+        memoryCache: ImageDataMemoryCache,
+        cancellationState: ImageLoadCancellationState,
+        completion: @escaping @Sendable (
+            Result<UIImage, ImageLoadError>
+        ) -> Void
+    ) -> DispatchWorkItem {
+        DispatchWorkItem {
+            guard !cancellationState.isCancelled else {
+                return
+            }
+
+            guard let image = UIImage(data: data) else {
+                completion(
+                    .failure(.imageCreationFailed)
+                )
+
+                return
+            }
+
+            guard !cancellationState.isCancelled else {
+                return
+            }
+
+            if shouldCache {
+                memoryCache.insert(
+                    data,
+                    for: url
+                )
+            }
+
+            completion(
+                .success(image)
+            )
+        }
     }
 }
 
