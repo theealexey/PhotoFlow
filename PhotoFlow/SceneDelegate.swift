@@ -13,8 +13,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             return
         }
 
-        let viewController = UIViewController()
-        viewController.view.backgroundColor = .systemBackground
+        let photoAPI = PhotoAPI()
+
+        let imageLoader = ImageLoader()
+
+        let viewController = PhotoListViewController(
+            photoFetcher: photoAPI,
+            imageLoader: imageLoader
+        )
 
         let navigationController = UINavigationController(
             rootViewController: viewController

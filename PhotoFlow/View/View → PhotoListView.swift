@@ -26,6 +26,11 @@ final class PhotoListView: UIView {
 
     private func configureView() {
         backgroundColor = .systemBackground
+        
+        collectionView.register(
+            PhotoCollectionViewCell.self,
+            forCellWithReuseIdentifier: PhotoCollectionViewCell.reuseIdentifier
+        )
 
         collectionView.backgroundColor = .systemBackground
         collectionView.translatesAutoresizingMaskIntoConstraints = false
