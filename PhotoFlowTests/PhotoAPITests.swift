@@ -11,32 +11,23 @@ struct PhotoAPITests {
     func successfulResponseMapsDTOsToPhotos() async {
         let json = """
         {
-            "results": [
+            "users": [
                 {
-                    "name": {
-                        "first": "Ada",
-                        "last": "Lovelace"
-                    },
-                    "login": {
-                        "uuid": "user-1"
-                    },
-                    "picture": {
-                        "large": "https://example.com/ada.jpg"
-                    }
+                    "id": 1,
+                    "firstName": "Ada",
+                    "lastName": "Lovelace",
+                    "image": "https://example.com/ada.jpg"
                 },
                 {
-                    "name": {
-                        "first": "Alan",
-                        "last": "Turing"
-                    },
-                    "login": {
-                        "uuid": "user-2"
-                    },
-                    "picture": {
-                        "large": "https://example.com/alan.jpg"
-                    }
+                    "id": 2,
+                    "firstName": "Alan",
+                    "lastName": "Turing",
+                    "image": "https://example.com/alan.jpg"
                 }
-            ]
+            ],
+            "total": 2,
+            "skip": 0,
+            "limit": 30
         }
         """
 
@@ -77,12 +68,12 @@ struct PhotoAPITests {
 
         let expectedPhotos = [
             Photo(
-                id: "user-1",
+                id: "1",
                 author: "Ada Lovelace",
                 imageURL: adaURL
             ),
             Photo(
-                id: "user-2",
+                id: "2",
                 author: "Alan Turing",
                 imageURL: alanURL
             )

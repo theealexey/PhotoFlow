@@ -26,7 +26,7 @@ final class PhotoAPI: PhotoFetching {
 
     init(
         session: URLSession = .shared,
-        endpoint: String = "https://randomuser.me/api/1.4/?results=30&inc=name,login,picture"
+        endpoint: String = "https://dummyjson.com/users?limit=30&select=id,firstName,lastName,image"
     ) {
         self.session = session
         self.endpoint = endpoint
@@ -98,12 +98,12 @@ final class PhotoAPI: PhotoFetching {
                 let decoder = JSONDecoder()
 
                 let response = try decoder.decode(
-                    RandomUserResponseDTO.self,
+                    DummyUsersResponseDTO.self,
                     from: data
                 )
 
-                let photos = response.results.map { dto in
-                    dto.makePhoto()
+                let photos = response.users.map { user in
+                    user.makePhoto()
                 }
 
                 completion(
@@ -122,34 +122,22 @@ final class PhotoAPI: PhotoFetching {
     }
 }
 
-private struct RandomUserResponseDTO: Decodable {
-    let results: [RandomUserDTO]
+private struct DummyUsersResponseDTO: Decodable {
+    let users: [DummyUserDTO]
 }
 
-private struct RandomUserDTO: Decodable {
+private struct DummyUserDTO: Decodable {
 
-    let name: NameDTO
-    let login: LoginDTO
-    let picture: PictureDTO
+    let id: Int
+    let firstName: String
+    let lastName: String
+    let image: URL
 
     func makePhoto() -> Photo {
         Photo(
-            id: login.uuid,
-            author: "\(name.first) \(name.last)",
-            imageURL: picture.large
+            id: String(id),
+            author: "\(firstName) \(lastName)",
+            imageURL: image
         )
     }
-}
-
-private struct NameDTO: Decodable {
-    let first: String
-    let last: String
-}
-
-private struct LoginDTO: Decodable {
-    let uuid: String
-}
-
-private struct PictureDTO: Decodable {
-    let large: URL
 }
