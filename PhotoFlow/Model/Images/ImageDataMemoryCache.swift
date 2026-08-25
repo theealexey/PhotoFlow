@@ -21,4 +21,10 @@ final class ImageDataMemoryCache: Sendable {
             storage[url] = data
         }
     }
+
+    func removeData(for url: URL) {
+        storage.withLock { storage in
+            storage[url] = nil
+        }
+    }
 }

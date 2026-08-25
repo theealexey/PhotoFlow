@@ -7,7 +7,7 @@ import UIKit
 
 @Suite(.serialized)
 struct ImageLoaderTests {
-    
+
     @Test
     func cacheMissLoadsFromNetworkAndStoresDataInMemoryAndDisk() async throws {
         let fileManager = FileManager.default
@@ -52,7 +52,9 @@ struct ImageLoaderTests {
             for: url
         )
 
-        #expect(initialDiskData == nil)
+        #expect(
+            initialDiskData == nil
+        )
 
         URLProtocolStub.prepare(
             responseData: imageData
@@ -60,7 +62,7 @@ struct ImageLoaderTests {
 
         let session = makeStubbedSession()
 
-        let imageLoader = ImageLoader(
+        let imageLoader = makeImageLoader(
             session: session,
             memoryCache: memoryCache,
             diskCache: diskCache
@@ -98,43 +100,7 @@ struct ImageLoaderTests {
             storedDiskData == imageData
         )
     }
-    
-    private func loadImage(
-        using imageLoader: ImageLoader,
-        from url: URL
-    ) async -> Result<UIImage, ImageLoadError> {
-        var request: ImageLoadRequest?
 
-        let result = await withCheckedContinuation { continuation in
-            request = imageLoader.loadImage(
-                from: url
-            ) { result in
-                continuation.resume(
-                    returning: result
-                )
-            }
-        }
-
-        withExtendedLifetime(request) {}
-
-        return result
-    }
-
-    private func readDiskData(
-        from diskCache: DiskImageCache,
-        for url: URL
-    ) async -> Data? {
-        await withCheckedContinuation { continuation in
-            diskCache.data(
-                for: url
-            ) { data in
-                continuation.resume(
-                    returning: data
-                )
-            }
-        }
-    }
-    
     @Test
     func diskCacheHitDoesNotStartNetworkRequestAndPromotesDataToMemory() throws {
         let fileManager = FileManager.default
@@ -185,13 +151,15 @@ struct ImageLoaderTests {
 
         let session = makeStubbedSession()
 
-        let imageLoader = ImageLoader(
+        let imageLoader = makeImageLoader(
             session: session,
             memoryCache: memoryCache,
             diskCache: diskCache
         )
 
-        let completionResult = Mutex<Bool?>(nil)
+        let completionResult = Mutex<Bool?>(
+            nil
+        )
 
         let completionSemaphore = DispatchSemaphore(
             value: 0
@@ -218,14 +186,18 @@ struct ImageLoaderTests {
                 timeout: .now() + 1
             )
 
-            #expect(waitResult == .success)
+            #expect(
+                waitResult == .success
+            )
         }
 
         let didSucceed = completionResult.withLock { value in
             value
         }
 
-        #expect(didSucceed == true)
+        #expect(
+            didSucceed == true
+        )
 
         #expect(
             URLProtocolStub.requestCount == 0
@@ -235,10 +207,10 @@ struct ImageLoaderTests {
             memoryCache.data(for: url) == imageData
         )
     }
-    
+
     @Test
     func cacheHitDoesNotStartNetworkRequest() {
-        let cache = ImageDataMemoryCache()
+        let memoryCache = ImageDataMemoryCache()
 
         guard let url = URL(
             string: "https://example.com/cached-image.png"
@@ -252,7 +224,7 @@ struct ImageLoaderTests {
             return
         }
 
-        cache.insert(
+        memoryCache.insert(
             imageData,
             for: url
         )
@@ -263,12 +235,14 @@ struct ImageLoaderTests {
 
         let session = makeStubbedSession()
 
-        let imageLoader = ImageLoader(
+        let imageLoader = makeImageLoader(
             session: session,
-            memoryCache: cache
+            memoryCache: memoryCache
         )
 
-        let completionResult = Mutex<Bool?>(nil)
+        let completionResult = Mutex<Bool?>(
+            nil
+        )
 
         let completionSemaphore = DispatchSemaphore(
             value: 0
@@ -295,20 +269,27 @@ struct ImageLoaderTests {
                 timeout: .now() + 1
             )
 
-            #expect(waitResult == .success)
+            #expect(
+                waitResult == .success
+            )
         }
 
         let didSucceed = completionResult.withLock { value in
             value
         }
 
-        #expect(didSucceed == true)
-        #expect(URLProtocolStub.requestCount == 0)
+        #expect(
+            didSucceed == true
+        )
+
+        #expect(
+            URLProtocolStub.requestCount == 0
+        )
     }
 
     @Test
     func cacheMissLoadsFromNetworkAndCachesData() {
-        let cache = ImageDataMemoryCache()
+        let memoryCache = ImageDataMemoryCache()
 
         guard let url = URL(
             string: "https://example.com/network-image.png"
@@ -328,16 +309,18 @@ struct ImageLoaderTests {
 
         let session = makeStubbedSession()
 
-        let imageLoader = ImageLoader(
+        let imageLoader = makeImageLoader(
             session: session,
-            memoryCache: cache
+            memoryCache: memoryCache
         )
 
         #expect(
-            cache.data(for: url) == nil
+            memoryCache.data(for: url) == nil
         )
 
-        let firstCompletionResult = Mutex<Bool?>(nil)
+        let firstCompletionResult = Mutex<Bool?>(
+            nil
+        )
 
         let firstCompletionSemaphore = DispatchSemaphore(
             value: 0
@@ -364,23 +347,34 @@ struct ImageLoaderTests {
                 timeout: .now() + 1
             )
 
-            #expect(waitResult == .success)
+            #expect(
+                waitResult == .success
+            )
         }
 
         let firstDidSucceed = firstCompletionResult.withLock { value in
             value
         }
 
-        #expect(firstDidSucceed == true)
-        #expect(URLProtocolStub.requestCount == 1)
+        #expect(
+            firstDidSucceed == true
+        )
 
-        let cachedData = cache.data(
+        #expect(
+            URLProtocolStub.requestCount == 1
+        )
+
+        let cachedData = memoryCache.data(
             for: url
         )
 
-        #expect(cachedData == imageData)
+        #expect(
+            cachedData == imageData
+        )
 
-        let secondCompletionResult = Mutex<Bool?>(nil)
+        let secondCompletionResult = Mutex<Bool?>(
+            nil
+        )
 
         let secondCompletionSemaphore = DispatchSemaphore(
             value: 0
@@ -407,18 +401,188 @@ struct ImageLoaderTests {
                 timeout: .now() + 1
             )
 
-            #expect(waitResult == .success)
+            #expect(
+                waitResult == .success
+            )
         }
 
         let secondDidSucceed = secondCompletionResult.withLock { value in
             value
         }
 
-        #expect(secondDidSucceed == true)
+        #expect(
+            secondDidSucceed == true
+        )
 
         #expect(
             URLProtocolStub.requestCount == 1
         )
+    }
+    
+    @Test
+    func invalidDiskCachedDataIsEvictedAndNextLoadUsesNetwork() async throws {
+        let fileManager = FileManager.default
+
+        let directoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                UUID().uuidString,
+                isDirectory: true
+            )
+
+        defer {
+            try? fileManager.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let memoryCache = ImageDataMemoryCache()
+
+        let diskCache = try DiskImageCache(
+            fileManager: fileManager,
+            directoryURL: directoryURL
+        )
+
+        guard let url = URL(
+            string: "https://example.com/poisoned-image.png"
+        ) else {
+            Issue.record("Expected valid test URL")
+            return
+        }
+
+        let invalidImageData = Data(
+            "not-an-image".utf8
+        )
+
+        guard let validImageData = makeValidImageData() else {
+            Issue.record("Expected valid image data")
+            return
+        }
+
+        diskCache.insert(
+            invalidImageData,
+            for: url
+        )
+
+        URLProtocolStub.prepare(
+            responseData: validImageData
+        )
+
+        let session = makeStubbedSession()
+
+        let imageLoader = makeImageLoader(
+            session: session,
+            memoryCache: memoryCache,
+            diskCache: diskCache
+        )
+
+        let firstResult = await loadImage(
+            using: imageLoader,
+            from: url
+        )
+
+        switch firstResult {
+        case .success:
+            Issue.record(
+                "Expected imageCreationFailed for invalid cached data"
+            )
+
+        case .failure(let error):
+            #expect(
+                error == .imageCreationFailed
+            )
+        }
+
+        #expect(
+            URLProtocolStub.requestCount == 0
+        )
+
+        #expect(
+            memoryCache.data(for: url) == nil
+        )
+
+        let secondResult = await loadImage(
+            using: imageLoader,
+            from: url
+        )
+
+        switch secondResult {
+        case .success:
+            break
+
+        case .failure(let error):
+            Issue.record(
+                "Expected successful recovery load, received \(error)"
+            )
+        }
+
+        #expect(
+            URLProtocolStub.requestCount == 1
+        )
+
+        #expect(
+            memoryCache.data(for: url) == validImageData
+        )
+
+        let diskData = await readDiskData(
+            from: diskCache,
+            for: url
+        )
+
+        #expect(
+            diskData == validImageData
+        )
+    }
+    
+    private func makeImageLoader(
+        session: URLSession,
+        memoryCache: ImageDataMemoryCache,
+        diskCache: DiskImageCache? = nil
+    ) -> ImageLoader {
+        let dataLoader = ImageDataLoader(
+            session: session,
+            memoryCache: memoryCache,
+            diskCache: diskCache
+        )
+
+        return ImageLoader(
+            dataLoader: dataLoader
+        )
+    }
+
+    private func loadImage(
+        using imageLoader: ImageLoader,
+        from url: URL
+    ) async -> Result<UIImage, ImageLoadError> {
+        var request: ImageLoadRequest?
+
+        let result = await withCheckedContinuation { continuation in
+            request = imageLoader.loadImage(
+                from: url
+            ) { result in
+                continuation.resume(
+                    returning: result
+                )
+            }
+        }
+
+        withExtendedLifetime(request) {}
+
+        return result
+    }
+
+    private func readDiskData(
+        from diskCache: DiskImageCache,
+        for url: URL
+    ) async -> Data? {
+        await withCheckedContinuation { continuation in
+            diskCache.data(
+                for: url
+            ) { data in
+                continuation.resume(
+                    returning: data
+                )
+            }
+        }
     }
 
     private func makeStubbedSession() -> URLSession {

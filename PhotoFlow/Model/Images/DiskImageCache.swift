@@ -82,6 +82,23 @@ final class DiskImageCache: Sendable {
         }
     }
 
+    func removeData(for url: URL) {
+        diskQueue.async { [directoryURL] in
+            let fileName = Self.fileName(
+                for: url
+            )
+
+            let fileURL = directoryURL.appendingPathComponent(
+                fileName,
+                isDirectory: false
+            )
+
+            try? FileManager.default.removeItem(
+                at: fileURL
+            )
+        }
+    }
+    
     private static func fileName(
         for url: URL
     ) -> String {

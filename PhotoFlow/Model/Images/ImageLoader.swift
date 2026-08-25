@@ -20,7 +20,7 @@ enum ImageLoadError: Error, Equatable, Sendable {
     case network
 }
 
-final class ImageLoadRequest {
+final class ImageLoadRequest: Sendable {
 
     private let state: ImageLoadRequestState
 
@@ -39,21 +39,15 @@ final class ImageLoadRequest {
     }
 }
 
-final class ImageLoader: ImageLoading {
+final class ImageLoader {
 
-    private let session: URLSession
-    private let memoryCache: ImageDataMemoryCache
-    private let diskCache: DiskImageCache?
+    private let dataLoader: ImageDataLoader
     private let imageProcessingQueue: DispatchQueue
 
     init(
-        session: URLSession = .shared,
-        memoryCache: ImageDataMemoryCache = ImageDataMemoryCache(),
-        diskCache: DiskImageCache? = nil
+        dataLoader: ImageDataLoader
     ) {
-        self.session = session
-        self.memoryCache = memoryCache
-        self.diskCache = diskCache
+        self.dataLoader = dataLoader
 
         imageProcessingQueue = DispatchQueue(
             label: "com.alexeywestergaard.PhotoFlow.image-processing",
@@ -61,6 +55,9 @@ final class ImageLoader: ImageLoading {
             attributes: .concurrent
         )
     }
+}
+
+extension ImageLoader: ImageLoading {
 
     @discardableResult
     func loadImage(
@@ -75,158 +72,53 @@ final class ImageLoader: ImageLoading {
             state: requestState
         )
 
-        if let cachedData = memoryCache.data(
-            for: url
-        ) {
-            Self.processImageData(
-                cachedData,
-                from: .memoryCache,
-                for: url,
-                memoryCache: memoryCache,
-                diskCache: diskCache,
-                imageProcessingQueue: imageProcessingQueue,
-                requestState: requestState,
-                completion: completion
-            )
-
-            return request
-        }
-
-        guard let diskCache else {
-            Self.startNetworkLoad(
-                from: url,
-                session: session,
-                memoryCache: memoryCache,
-                diskCache: nil,
-                imageProcessingQueue: imageProcessingQueue,
-                requestState: requestState,
-                completion: completion
-            )
-
-            return request
-        }
-
-        diskCache.data(
-            for: url
-        ) { [session, memoryCache, imageProcessingQueue] data in
+        let dataRequest = dataLoader.loadData(
+            from: url
+        ) { [dataLoader, imageProcessingQueue] result in
             guard !requestState.isCancelled else {
                 return
             }
 
-            if let data {
+            switch result {
+            case .success(let data):
                 Self.processImageData(
                     data,
-                    from: .diskCache,
                     for: url,
-                    memoryCache: memoryCache,
-                    diskCache: diskCache,
+                    dataLoader: dataLoader,
                     imageProcessingQueue: imageProcessingQueue,
                     requestState: requestState,
                     completion: completion
                 )
 
-                return
-            }
+            case .failure(let error):
+                let imageLoadError = Self.mapError(
+                    error
+                )
 
-            Self.startNetworkLoad(
-                from: url,
-                session: session,
-                memoryCache: memoryCache,
-                diskCache: diskCache,
-                imageProcessingQueue: imageProcessingQueue,
-                requestState: requestState,
-                completion: completion
-            )
+                completion(
+                    .failure(imageLoadError)
+                )
+            }
         }
+        
+        requestState.register(
+            dataRequest: dataRequest
+        )
 
         return request
     }
 
-    private static func startNetworkLoad(
-        from url: URL,
-        session: URLSession,
-        memoryCache: ImageDataMemoryCache,
-        diskCache: DiskImageCache?,
-        imageProcessingQueue: DispatchQueue,
-        requestState: ImageLoadRequestState,
-        completion: @escaping @Sendable (
-            Result<UIImage, ImageLoadError>
-        ) -> Void
-    ) {
-        guard !requestState.isCancelled else {
-            return
-        }
-
-        let networkTask = session.dataTask(
-            with: url
-        ) { data, response, error in
-            guard !requestState.isCancelled else {
-                return
-            }
-
-            if let urlError = error as? URLError {
-                guard urlError.code != .cancelled else {
-                    return
-                }
-
-                completion(
-                    .failure(.network)
-                )
-
-                return
-            }
-
-            guard
-                let httpResponse = response as? HTTPURLResponse,
-                (200..<300).contains(httpResponse.statusCode)
-            else {
-                completion(
-                    .failure(.invalidResponse)
-                )
-
-                return
-            }
-
-            guard let data else {
-                completion(
-                    .failure(.missingData)
-                )
-
-                return
-            }
-
-            processImageData(
-                data,
-                from: .network,
-                for: url,
-                memoryCache: memoryCache,
-                diskCache: diskCache,
-                imageProcessingQueue: imageProcessingQueue,
-                requestState: requestState,
-                completion: completion
-            )
-        }
-
-        requestState.register(
-            networkTask: networkTask
-        )
-
-        networkTask.resume()
-    }
-
     private static func processImageData(
         _ data: Data,
-        from source: ImageDataSource,
         for url: URL,
-        memoryCache: ImageDataMemoryCache,
-        diskCache: DiskImageCache?,
+        dataLoader: ImageDataLoader,
         imageProcessingQueue: DispatchQueue,
         requestState: ImageLoadRequestState,
         completion: @escaping @Sendable (
             Result<UIImage, ImageLoadError>
         ) -> Void
     ) {
-        let workItem = DispatchWorkItem {
+        imageProcessingQueue.async {
             guard !requestState.isCancelled else {
                 return
             }
@@ -234,6 +126,10 @@ final class ImageLoader: ImageLoading {
             guard let image = UIImage(
                 data: data
             ) else {
+                dataLoader.removeData(
+                    for: url
+                )
+
                 completion(
                     .failure(.imageCreationFailed)
                 )
@@ -245,50 +141,33 @@ final class ImageLoader: ImageLoading {
                 return
             }
 
-            switch source {
-            case .memoryCache:
-                break
-
-            case .diskCache:
-                memoryCache.insert(
-                    data,
-                    for: url
-                )
-
-            case .network:
-                memoryCache.insert(
-                    data,
-                    for: url
-                )
-
-                diskCache?.insert(
-                    data,
-                    for: url
-                )
-            }
-
             completion(
                 .success(image)
             )
         }
-
-        imageProcessingQueue.async(
-            execute: workItem
-        )
     }
-}
 
-private enum ImageDataSource {
-    case memoryCache
-    case diskCache
-    case network
+    private static func mapError(
+        _ error: ImageDataLoadError
+    ) -> ImageLoadError {
+        switch error {
+        case .invalidResponse:
+            return .invalidResponse
+
+        case .missingData:
+            return .missingData
+
+        case .network:
+            return .network
+        }
+    }
 }
 
 final class ImageLoadRequestState: Sendable {
 
     private struct State {
         var isCancelled = false
-        var networkTask: URLSessionDataTask?
+        var dataRequest: ImageDataLoadRequest?
     }
 
     private let state = Mutex(
@@ -296,35 +175,34 @@ final class ImageLoadRequestState: Sendable {
     )
 
     func register(
-        networkTask: URLSessionDataTask
+        dataRequest: ImageDataLoadRequest
     ) {
         let shouldCancel = state.withLock { state in
             if state.isCancelled {
                 return true
             }
 
-            state.networkTask = networkTask
+            state.dataRequest = dataRequest
 
             return false
         }
 
         if shouldCancel {
-            networkTask.cancel()
+            dataRequest.cancel()
         }
     }
 
     func cancel() {
-        let networkTask = state.withLock { state in
+        let dataRequest = state.withLock { state in
             state.isCancelled = true
 
-            let networkTask = state.networkTask
+            let dataRequest = state.dataRequest
+            state.dataRequest = nil
 
-            state.networkTask = nil
-
-            return networkTask
+            return dataRequest
         }
 
-        networkTask?.cancel()
+        dataRequest?.cancel()
     }
 
     var isCancelled: Bool {
