@@ -226,6 +226,86 @@ struct ImageDataLoaderTests {
         )
     }
 
+    @Test
+    func removeDataDeletesDataFromMemoryAndDisk() async throws {
+        let fileManager = FileManager.default
+
+        let directoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                UUID().uuidString,
+                isDirectory: true
+            )
+
+        defer {
+            try? fileManager.removeItem(
+                at: directoryURL
+            )
+        }
+
+        let memoryCache = ImageDataMemoryCache()
+
+        let diskCache = try DiskImageCache(
+            fileManager: fileManager,
+            directoryURL: directoryURL
+        )
+
+        guard let url = URL(
+            string: "https://example.com/image-to-remove.png"
+        ) else {
+            Issue.record("Expected valid test URL")
+            return
+        }
+
+        let imageData = Data(
+            "cached-image-data".utf8
+        )
+
+        memoryCache.insert(
+            imageData,
+            for: url
+        )
+
+        diskCache.insert(
+            imageData,
+            for: url
+        )
+
+        #expect(
+            memoryCache.data(for: url) == imageData
+        )
+
+        let initialDiskData = await readDiskData(
+            from: diskCache,
+            for: url
+        )
+
+        #expect(
+            initialDiskData == imageData
+        )
+
+        let dataLoader = ImageDataLoader(
+            memoryCache: memoryCache,
+            diskCache: diskCache
+        )
+
+        dataLoader.removeData(
+            for: url
+        )
+
+        #expect(
+            memoryCache.data(for: url) == nil
+        )
+
+        let removedDiskData = await readDiskData(
+            from: diskCache,
+            for: url
+        )
+
+        #expect(
+            removedDiskData == nil
+        )
+    }
+    
     private func loadData(
         using dataLoader: ImageDataLoader,
         from url: URL

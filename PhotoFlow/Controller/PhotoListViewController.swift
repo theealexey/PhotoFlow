@@ -5,6 +5,7 @@ final class PhotoListViewController: UIViewController {
     private let contentView = PhotoListView()
     private let photoFetcher: any PhotoFetching
     private let imageLoader: any ImageLoading
+    private let imagePrefetcher: ImagePrefetcher
 
     private var photos: [Photo] = []
     private var fetchTask: URLSessionDataTask?
@@ -17,10 +18,12 @@ final class PhotoListViewController: UIViewController {
 
     init(
         photoFetcher: any PhotoFetching,
-        imageLoader: any ImageLoading
+        imageLoader: any ImageLoading,
+        imagePrefetcher: ImagePrefetcher
     ) {
         self.photoFetcher = photoFetcher
         self.imageLoader = imageLoader
+        self.imagePrefetcher = imagePrefetcher
 
         super.init(
             nibName: nil,
@@ -44,6 +47,7 @@ final class PhotoListViewController: UIViewController {
 
         contentView.collectionView.delegate = self
         contentView.collectionView.dataSource = self
+        contentView.collectionView.prefetchDataSource = self
 
         loadPhotos()
     }
@@ -241,5 +245,42 @@ extension PhotoListViewController: UICollectionViewDataSource {
         )
 
         return cell
+    }
+}
+
+extension PhotoListViewController: UICollectionViewDataSourcePrefetching {
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        prefetchItemsAt indexPaths: [IndexPath]
+    ) {
+        let urls = indexPaths.compactMap { indexPath -> URL? in
+            guard photos.indices.contains(indexPath.item) else {
+                return nil
+            }
+
+            return photos[indexPath.item].imageURL
+        }
+
+        imagePrefetcher.prefetch(
+            urls: urls
+        )
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        cancelPrefetchingForItemsAt indexPaths: [IndexPath]
+    ) {
+        let urls = indexPaths.compactMap { indexPath -> URL? in
+            guard photos.indices.contains(indexPath.item) else {
+                return nil
+            }
+
+            return photos[indexPath.item].imageURL
+        }
+
+        imagePrefetcher.cancelPrefetching(
+            urls: urls
+        )
     }
 }

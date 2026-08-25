@@ -28,9 +28,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             dataLoader: dataLoader
         )
 
+        let imagePrefetcher = ImagePrefetcher(
+            dataLoader: dataLoader
+        )
+
         let viewController = PhotoListViewController(
             photoFetcher: photoAPI,
-            imageLoader: imageLoader
+            imageLoader: imageLoader,
+            imagePrefetcher: imagePrefetcher
         )
 
         let navigationController = UINavigationController(
