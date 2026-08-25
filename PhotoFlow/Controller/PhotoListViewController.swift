@@ -6,6 +6,7 @@ final class PhotoListViewController: UIViewController {
     private let photoFetcher: any PhotoFetching
     private let imageLoader: any ImageLoading
     private let imagePrefetcher: ImagePrefetcher
+    private let imageProcessor: PhotoImageProcessor
 
     private var photos: [Photo] = []
     private var fetchTask: URLSessionDataTask?
@@ -19,11 +20,13 @@ final class PhotoListViewController: UIViewController {
     init(
         photoFetcher: any PhotoFetching,
         imageLoader: any ImageLoading,
-        imagePrefetcher: ImagePrefetcher
+        imagePrefetcher: ImagePrefetcher,
+        imageProcessor: PhotoImageProcessor
     ) {
         self.photoFetcher = photoFetcher
         self.imageLoader = imageLoader
         self.imagePrefetcher = imagePrefetcher
+        self.imageProcessor = imageProcessor
 
         super.init(
             nibName: nil,
@@ -211,6 +214,28 @@ extension PhotoListViewController: UICollectionViewDelegateFlowLayout {
         imageRequests[photo.id]?.request?.cancel()
         imageRequests[photo.id] = nil
     }
+    
+    func collectionView(
+        _ collectionView: UICollectionView,
+        didSelectItemAt indexPath: IndexPath
+    ) {
+        guard photos.indices.contains(indexPath.item) else {
+            return
+        }
+
+        let photo = photos[indexPath.item]
+
+        let detailViewController = PhotoDetailViewController(
+            photo: photo,
+            imageLoader: imageLoader,
+            imageProcessor: imageProcessor
+        )
+
+        navigationController?.pushViewController(
+            detailViewController,
+            animated: true
+        )
+    }
 }
 
 extension PhotoListViewController: UICollectionViewDataSource {
@@ -284,3 +309,4 @@ extension PhotoListViewController: UICollectionViewDataSourcePrefetching {
         )
     }
 }
+

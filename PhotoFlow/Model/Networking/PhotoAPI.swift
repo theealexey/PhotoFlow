@@ -26,7 +26,7 @@ final class PhotoAPI: PhotoFetching {
 
     init(
         session: URLSession = .shared,
-        endpoint: String = "https://picsum.photos/v2/list?page=1&limit=30"
+        endpoint: String = "https://randomuser.me/api/1.4/?results=30&inc=name,login,picture"
     ) {
         self.session = session
         self.endpoint = endpoint
@@ -38,10 +38,13 @@ final class PhotoAPI: PhotoFetching {
             Result<[Photo], PhotoFetchError>
         ) -> Void
     ) -> URLSessionDataTask? {
-        guard let url = URL(string: endpoint) else {
+        guard let url = URL(
+            string: endpoint
+        ) else {
             completion(
                 .failure(.invalidURL)
             )
+
             return nil
         }
 
@@ -53,12 +56,22 @@ final class PhotoAPI: PhotoFetching {
                     completion(
                         .failure(.cancelled)
                     )
+
                     return
                 }
 
                 completion(
                     .failure(.network)
                 )
+
+                return
+            }
+
+            if error != nil {
+                completion(
+                    .failure(.network)
+                )
+
                 return
             }
 
@@ -69,6 +82,7 @@ final class PhotoAPI: PhotoFetching {
                 completion(
                     .failure(.invalidResponse)
                 )
+
                 return
             }
 
@@ -76,6 +90,7 @@ final class PhotoAPI: PhotoFetching {
                 completion(
                     .failure(.missingData)
                 )
+
                 return
             }
 
@@ -83,11 +98,11 @@ final class PhotoAPI: PhotoFetching {
                 let decoder = JSONDecoder()
 
                 let response = try decoder.decode(
-                    [PhotoDTO].self,
+                    RandomUserResponseDTO.self,
                     from: data
                 )
 
-                let photos = response.map { dto in
+                let photos = response.results.map { dto in
                     dto.makePhoto()
                 }
 
@@ -107,23 +122,34 @@ final class PhotoAPI: PhotoFetching {
     }
 }
 
-private struct PhotoDTO: Decodable {
+private struct RandomUserResponseDTO: Decodable {
+    let results: [RandomUserDTO]
+}
 
-    let id: String
-    let author: String
-    let downloadURL: URL
+private struct RandomUserDTO: Decodable {
 
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case author
-        case downloadURL = "download_url"
-    }
+    let name: NameDTO
+    let login: LoginDTO
+    let picture: PictureDTO
 
     func makePhoto() -> Photo {
         Photo(
-            id: id,
-            author: author,
-            imageURL: downloadURL
+            id: login.uuid,
+            author: "\(name.first) \(name.last)",
+            imageURL: picture.large
         )
     }
+}
+
+private struct NameDTO: Decodable {
+    let first: String
+    let last: String
+}
+
+private struct LoginDTO: Decodable {
+    let uuid: String
+}
+
+private struct PictureDTO: Decodable {
+    let large: URL
 }
