@@ -22,12 +22,12 @@ struct PhotoImageProcessorTests {
 
         let processor = PhotoImageProcessor()
 
-        let output = await process(
+        let result = await process(
             image: sourceImage,
             using: processor
         )
 
-        switch output.result {
+        switch result {
         case .success(let image):
             #expect(
                 image.size.width <= 1_200
@@ -73,27 +73,22 @@ struct PhotoImageProcessorTests {
     private func process(
         image: UIImage,
         using processor: PhotoImageProcessor
-    ) async -> ProcessingOutput {
+    ) async -> Result<UIImage, ImageProcessingError> {
         var request: ImageProcessingRequest?
 
-        let output = await withCheckedContinuation { continuation in
+        let result = await withCheckedContinuation { continuation in
             request = processor.process(
                 image: image
             ) { result in
-                let output = ProcessingOutput(
-                    result: result,
-                    wasDeliveredOnMainThread: Thread.isMainThread
-                )
-
                 continuation.resume(
-                    returning: output
+                    returning: result
                 )
             }
         }
 
         withExtendedLifetime(request) {}
 
-        return output
+        return result
     }
 
     private func makeSolidRedImage(
@@ -150,9 +145,7 @@ struct PhotoImageProcessorTests {
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
 
-        var bytes = [
-            UInt8
-        ](
+        var bytes = [UInt8](
             repeating: 0,
             count: 4
         )
@@ -193,11 +186,6 @@ struct PhotoImageProcessorTests {
             blue: bytes[2]
         )
     }
-}
-
-private struct ProcessingOutput {
-    let result: Result<UIImage, ImageProcessingError>
-    let wasDeliveredOnMainThread: Bool
 }
 
 private struct Pixel {

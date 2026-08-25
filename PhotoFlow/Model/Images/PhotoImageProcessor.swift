@@ -182,13 +182,10 @@ final class PhotoImageProcessor: Sendable {
         operationQueue.addOperations(
             [
                 resizeOperation,
-                monochromeOperation
+                monochromeOperation,
+                completionOperation
             ],
             waitUntilFinished: false
-        )
-
-        OperationQueue.main.addOperation(
-            completionOperation
         )
 
         return ImageProcessingRequest(
