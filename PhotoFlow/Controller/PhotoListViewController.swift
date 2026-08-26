@@ -2,9 +2,16 @@ import UIKit
 
 final class PhotoListViewController: UIViewController {
 
-    private let contentView = PhotoListView()
-    private let photoFetcher: any PhotoFetching
-    private let imageLoader: any ImageLoading
+    private lazy var contentView: PhotoListView = {
+        let view = PhotoListView()
+        view.collectionView.delegate = self
+        view.collectionView.dataSource = self
+        view.collectionView.prefetchDataSource = self
+        return view
+    }()
+
+    private let photoFetcher: PhotoFetching
+    private let imageLoader: ImageLoading
     private let imagePrefetcher: ImagePrefetcher
     private let imageProcessor: PhotoImageProcessor
 
@@ -18,8 +25,8 @@ final class PhotoListViewController: UIViewController {
     }
 
     init(
-        photoFetcher: any PhotoFetching,
-        imageLoader: any ImageLoading,
+        photoFetcher: PhotoFetching,
+        imageLoader: ImageLoading,
         imagePrefetcher: ImagePrefetcher,
         imageProcessor: PhotoImageProcessor
     ) {
@@ -27,11 +34,7 @@ final class PhotoListViewController: UIViewController {
         self.imageLoader = imageLoader
         self.imagePrefetcher = imagePrefetcher
         self.imageProcessor = imageProcessor
-
-        super.init(
-            nibName: nil,
-            bundle: nil
-        )
+        super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable)
@@ -45,13 +48,7 @@ final class PhotoListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
         title = "Photos"
-
-        contentView.collectionView.delegate = self
-        contentView.collectionView.dataSource = self
-        contentView.collectionView.prefetchDataSource = self
-
         loadPhotos()
     }
 
@@ -85,15 +82,9 @@ final class PhotoListViewController: UIViewController {
         imageRequests[photo.id]?.request?.cancel()
 
         let requestID = UUID()
+        imageRequests[photo.id] = ActiveImageRequest(id: requestID, request: nil)
 
-        imageRequests[photo.id] = ActiveImageRequest(
-            id: requestID,
-            request: nil
-        )
-
-        let request = imageLoader.loadImage(
-            from: photo.imageURL
-        ) { [weak self] result in
+        let request = imageLoader.loadImage(from: photo.imageURL) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else {
                     return
@@ -107,10 +98,7 @@ final class PhotoListViewController: UIViewController {
 
                 switch result {
                 case .success(let image):
-                    self.displayImage(
-                        image,
-                        for: photo
-                    )
+                    self.displayImage(image, for: photo)
 
                 case .failure:
                     return
@@ -126,31 +114,18 @@ final class PhotoListViewController: UIViewController {
         imageRequests[photo.id]?.request = request
     }
 
-    private func displayImage(
-        _ image: UIImage,
-        for photo: Photo
-    ) {
-        guard let item = photos.firstIndex(
-            where: { $0.id == photo.id }
-        ) else {
+    private func displayImage(_ image: UIImage, for photo: Photo) {
+        guard let item = photos.firstIndex(where: { $0.id == photo.id }) else {
             return
         }
 
-        let indexPath = IndexPath(
-            item: item,
-            section: 0
-        )
+        let indexPath = IndexPath(item: item, section: 0)
 
-        guard let cell = contentView.collectionView.cellForItem(
-            at: indexPath
-        ) as? PhotoCollectionViewCell else {
+        guard let cell = contentView.collectionView.cellForItem(at: indexPath) as? PhotoCollectionViewCell else {
             return
         }
 
-        cell.setImage(
-            image,
-            for: photo.id
-        )
+        cell.setImage(image, for: photo.id)
     }
 
     private func showLoadingError() {
@@ -160,21 +135,12 @@ final class PhotoListViewController: UIViewController {
             preferredStyle: .alert
         )
 
-        let retryAction = UIAlertAction(
-            title: "Retry",
-            style: .default
-        ) { [weak self] _ in
+        let retryAction = UIAlertAction(title: "Retry", style: .default) { [weak self] _ in
             self?.loadPhotos()
         }
 
-        alertController.addAction(
-            retryAction
-        )
-
-        present(
-            alertController,
-            animated: true
-        )
+        alertController.addAction(retryAction)
+        present(alertController, animated: true)
     }
 }
 
@@ -187,17 +153,10 @@ extension PhotoListViewController: UICollectionViewDelegateFlowLayout {
     ) -> CGSize {
         let spacing: CGFloat = 12
         let horizontalInsets: CGFloat = 24
-
-        let availableWidth = collectionView.bounds.width
-            - horizontalInsets
-            - spacing
-
+        let availableWidth = collectionView.bounds.width - horizontalInsets - spacing
         let itemWidth = availableWidth / 2
 
-        return CGSize(
-            width: itemWidth,
-            height: itemWidth + 42
-        )
+        return CGSize(width: itemWidth, height: itemWidth + 42)
     }
 
     func collectionView(
@@ -210,11 +169,10 @@ extension PhotoListViewController: UICollectionViewDelegateFlowLayout {
         }
 
         let photo = photos[indexPath.item]
-
         imageRequests[photo.id]?.request?.cancel()
         imageRequests[photo.id] = nil
     }
-    
+
     func collectionView(
         _ collectionView: UICollectionView,
         didSelectItemAt indexPath: IndexPath
@@ -224,26 +182,19 @@ extension PhotoListViewController: UICollectionViewDelegateFlowLayout {
         }
 
         let photo = photos[indexPath.item]
-
         let detailViewController = PhotoDetailViewController(
             photo: photo,
             imageLoader: imageLoader,
             imageProcessor: imageProcessor
         )
 
-        navigationController?.pushViewController(
-            detailViewController,
-            animated: true
-        )
+        navigationController?.pushViewController(detailViewController, animated: true)
     }
 }
 
 extension PhotoListViewController: UICollectionViewDataSource {
 
-    func collectionView(
-        _ collectionView: UICollectionView,
-        numberOfItemsInSection section: Int
-    ) -> Int {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         photos.count
     }
 
@@ -259,15 +210,8 @@ extension PhotoListViewController: UICollectionViewDataSource {
         }
 
         let photo = photos[indexPath.item]
-
-        cell.configure(
-            photoID: photo.id,
-            author: photo.author
-        )
-
-        loadImage(
-            for: photo
-        )
+        cell.configure(photoID: photo.id, author: photo.author)
+        loadImage(for: photo)
 
         return cell
     }
@@ -275,11 +219,8 @@ extension PhotoListViewController: UICollectionViewDataSource {
 
 extension PhotoListViewController: UICollectionViewDataSourcePrefetching {
 
-    func collectionView(
-        _ collectionView: UICollectionView,
-        prefetchItemsAt indexPaths: [IndexPath]
-    ) {
-        let urls = indexPaths.compactMap { indexPath -> URL? in
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        let urls: [URL] = indexPaths.compactMap { indexPath in
             guard photos.indices.contains(indexPath.item) else {
                 return nil
             }
@@ -287,16 +228,14 @@ extension PhotoListViewController: UICollectionViewDataSourcePrefetching {
             return photos[indexPath.item].imageURL
         }
 
-        imagePrefetcher.prefetch(
-            urls: urls
-        )
+        imagePrefetcher.prefetch(urls: urls)
     }
 
     func collectionView(
         _ collectionView: UICollectionView,
         cancelPrefetchingForItemsAt indexPaths: [IndexPath]
     ) {
-        let urls = indexPaths.compactMap { indexPath -> URL? in
+        let urls: [URL] = indexPaths.compactMap { indexPath in
             guard photos.indices.contains(indexPath.item) else {
                 return nil
             }
@@ -304,9 +243,6 @@ extension PhotoListViewController: UICollectionViewDataSourcePrefetching {
             return photos[indexPath.item].imageURL
         }
 
-        imagePrefetcher.cancelPrefetching(
-            urls: urls
-        )
+        imagePrefetcher.cancelPrefetching(urls: urls)
     }
 }
-
