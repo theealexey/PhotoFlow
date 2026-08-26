@@ -44,15 +44,15 @@ final class ImageLoader {
     private let imageProcessingQueue: DispatchQueue
 
     init(
-        dataLoader: ImageDataLoader
-    ) {
-        self.dataLoader = dataLoader
-
-        imageProcessingQueue = DispatchQueue(
+        dataLoader: ImageDataLoader,
+        imageProcessingQueue: DispatchQueue = DispatchQueue(
             label: "com.alexeywestergaard.PhotoFlow.image-processing",
             qos: .userInitiated,
             attributes: .concurrent
         )
+    ) {
+        self.dataLoader = dataLoader
+        self.imageProcessingQueue = imageProcessingQueue
     }
 }
 
