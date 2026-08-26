@@ -45,7 +45,6 @@ final class PhotoImageProcessor: Sendable {
         operationQueue.maxConcurrentOperationCount = 2
     }
 
-    @discardableResult
     func process(
         image: UIImage,
         completion: @escaping @Sendable (

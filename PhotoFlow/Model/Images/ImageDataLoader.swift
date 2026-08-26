@@ -22,7 +22,6 @@ final class ImageDataLoader: Sendable {
         self.diskCache = diskCache
     }
 
-    @discardableResult
     func loadData(
         from url: URL,
         completion: @escaping @Sendable (

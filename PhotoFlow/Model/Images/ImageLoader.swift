@@ -4,7 +4,6 @@ import UIKit
 
 protocol ImageLoading {
 
-    @discardableResult
     func loadImage(
         from url: URL,
         completion: @escaping @Sendable (
@@ -59,7 +58,6 @@ final class ImageLoader {
 
 extension ImageLoader: ImageLoading {
 
-    @discardableResult
     func loadImage(
         from url: URL,
         completion: @escaping @Sendable (
