@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import Synchronization
 import Testing
 import UIKit
 
@@ -68,6 +69,57 @@ struct PhotoImageProcessorTests {
                 "Expected successful processing, received \(error)"
             )
         }
+    }
+
+    @Test
+    func cancellingBeforeQueuedProcessingSuppressesCompletion() {
+        guard let sourceImage = makeSolidRedImage(
+            width: 1,
+            height: 1
+        ) else {
+            Issue.record(
+                "Expected test image"
+            )
+
+            return
+        }
+
+        let operationQueue = OperationQueue()
+        operationQueue.isSuspended = true
+
+        let processor = PhotoImageProcessor(
+            operationQueue: operationQueue
+        )
+        let completionCount = Mutex(0)
+
+        let request = processor.process(
+            image: sourceImage
+        ) { _ in
+            completionCount.withLock { count in
+                count += 1
+            }
+        }
+
+        #expect(
+            operationQueue.operationCount == 3
+        )
+
+        request.cancel()
+
+        #expect(
+            operationQueue.operations.allSatisfy { operation in
+                operation.isCancelled
+            }
+        )
+
+        operationQueue.isSuspended = false
+        operationQueue.waitUntilAllOperationsAreFinished()
+
+        #expect(
+            completionCount.withLock { count in
+                count
+            } == 0
+        )
     }
 
     private func process(

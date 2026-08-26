@@ -38,8 +38,10 @@ final class PhotoImageProcessor: Sendable {
 
     private let operationQueue: OperationQueue
 
-    init() {
-        operationQueue = OperationQueue()
+    init(
+        operationQueue: OperationQueue = OperationQueue()
+    ) {
+        self.operationQueue = operationQueue
         operationQueue.name = "com.alexeywestergaard.PhotoFlow.image-processing-operations"
         operationQueue.qualityOfService = .userInitiated
         operationQueue.maxConcurrentOperationCount = 2
