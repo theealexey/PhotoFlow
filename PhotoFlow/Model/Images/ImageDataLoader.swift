@@ -55,8 +55,8 @@ final class ImageDataLoader: Sendable {
 
         diskCache.data(
             for: url
-        ) { [session, memoryCache] data in
-            guard !request.isCancelled else {
+        ) { [weak request, session, memoryCache] data in
+            guard let request, !request.isCancelled else {
                 return
             }
 
@@ -102,8 +102,8 @@ final class ImageDataLoader: Sendable {
 
         let networkTask = session.dataTask(
             with: url
-        ) { data, response, error in
-            guard !request.isCancelled else {
+        ) { [weak request] data, response, error in
+            guard let request, !request.isCancelled else {
                 return
             }
 
