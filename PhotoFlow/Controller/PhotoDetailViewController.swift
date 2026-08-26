@@ -10,6 +10,9 @@ final class PhotoDetailViewController: UIViewController {
     
     private var imageRequest: ImageLoadRequest?
     private var processingRequest: ImageProcessingRequest?
+
+    private var currentImageRequestID: UUID?
+    private var currentProcessingRequestID: UUID?
     
     private var originalImage: UIImage?
     
@@ -55,17 +58,25 @@ final class PhotoDetailViewController: UIViewController {
     
     private func loadImage() {
         imageRequest?.cancel()
+
+        let requestID = UUID()
+        currentImageRequestID = requestID
         
         contentView.processButton.isEnabled = false
         
-        imageRequest = imageLoader.loadImage(
+        let request = imageLoader.loadImage(
             from: photo.imageURL
         ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else {
                     return
                 }
+
+                guard self.currentImageRequestID == requestID else {
+                    return
+                }
                 
+                self.currentImageRequestID = nil
                 self.imageRequest = nil
                 
                 switch result {
@@ -79,6 +90,13 @@ final class PhotoDetailViewController: UIViewController {
                 }
             }
         }
+
+        guard currentImageRequestID == requestID else {
+            request.cancel()
+            return
+        }
+
+        imageRequest = request
     }
     
     @objc
@@ -89,9 +107,12 @@ final class PhotoDetailViewController: UIViewController {
 
         processingRequest?.cancel()
 
+        let requestID = UUID()
+        currentProcessingRequestID = requestID
+
         contentView.processButton.isEnabled = false
 
-        processingRequest = imageProcessor.process(
+        let request = imageProcessor.process(
             image: originalImage
         ) { [weak self] result in
             DispatchQueue.main.async {
@@ -99,6 +120,11 @@ final class PhotoDetailViewController: UIViewController {
                     return
                 }
 
+                guard self.currentProcessingRequestID == requestID else {
+                    return
+                }
+
+                self.currentProcessingRequestID = nil
                 self.processingRequest = nil
                 self.contentView.processButton.isEnabled = true
 
@@ -111,6 +137,13 @@ final class PhotoDetailViewController: UIViewController {
                 }
             }
         }
+
+        guard currentProcessingRequestID == requestID else {
+            request.cancel()
+            return
+        }
+
+        processingRequest = request
     }
     
     override func viewDidDisappear(
@@ -123,6 +156,9 @@ final class PhotoDetailViewController: UIViewController {
         guard isMovingFromParent else {
             return
         }
+
+        currentImageRequestID = nil
+        currentProcessingRequestID = nil
 
         imageRequest?.cancel()
         imageRequest = nil
