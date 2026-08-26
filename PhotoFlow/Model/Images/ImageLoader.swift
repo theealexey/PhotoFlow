@@ -93,6 +93,10 @@ extension ImageLoader: ImageLoading {
                     error
                 )
 
+                guard !requestState.isCancelled else {
+                    return
+                }
+
                 completion(
                     .failure(imageLoadError)
                 )
@@ -127,6 +131,10 @@ extension ImageLoader: ImageLoading {
                 dataLoader.removeData(
                     for: url
                 )
+
+                guard !requestState.isCancelled else {
+                    return
+                }
 
                 completion(
                     .failure(.imageCreationFailed)
