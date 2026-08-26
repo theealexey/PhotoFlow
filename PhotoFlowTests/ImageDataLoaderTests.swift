@@ -305,6 +305,112 @@ struct ImageDataLoaderTests {
             removedDiskData == nil
         )
     }
+
+    @Test(.timeLimit(.minutes(1)))
+    func explicitCancellationCancelsNetworkRequest() async {
+        guard let url = URL(
+            string: "https://example.com/explicit-cancellation.png"
+        ) else {
+            Issue.record("Expected valid test URL")
+            return
+        }
+
+        let requestStarted = ImageDataLoaderTestSignal()
+        let requestStopped = ImageDataLoaderTestSignal()
+        let completionCount = Mutex(0)
+
+        ImageDataURLProtocolStub.prepareSuspended(
+            requestStarted: requestStarted,
+            requestStopped: requestStopped
+        )
+
+        let dataLoader = ImageDataLoader(
+            session: makeStubbedSession()
+        )
+
+        let request = dataLoader.loadData(
+            from: url
+        ) { _ in
+            completionCount.withLock { count in
+                count += 1
+            }
+        }
+
+        await requestStarted.wait()
+
+        #expect(
+            ImageDataURLProtocolStub.requestCount == 1
+        )
+
+        request.cancel()
+
+        await requestStopped.wait()
+
+        #expect(
+            ImageDataURLProtocolStub.stopCount == 1
+        )
+
+        #expect(
+            completionCount.withLock { count in
+                count
+            } == 0
+        )
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func releasingRequestCancelsNetworkRequest() async {
+        guard let url = URL(
+            string: "https://example.com/release-cancellation.png"
+        ) else {
+            Issue.record("Expected valid test URL")
+            return
+        }
+
+        let requestStarted = ImageDataLoaderTestSignal()
+        let requestStopped = ImageDataLoaderTestSignal()
+        let completionCount = Mutex(0)
+
+        ImageDataURLProtocolStub.prepareSuspended(
+            requestStarted: requestStarted,
+            requestStopped: requestStopped
+        )
+
+        let dataLoader = ImageDataLoader(
+            session: makeStubbedSession()
+        )
+
+        var request: ImageDataLoadRequest? = dataLoader.loadData(
+            from: url
+        ) { _ in
+            completionCount.withLock { count in
+                count += 1
+            }
+        }
+
+        await requestStarted.wait()
+
+        #expect(
+            request != nil
+        )
+
+        request = nil
+
+        await requestStopped.wait()
+
+        #expect(
+            ImageDataURLProtocolStub.requestCount == 1
+        )
+
+        #expect(
+            ImageDataURLProtocolStub.stopCount == 1
+        )
+
+        #expect(
+            completionCount.withLock { count in
+                count
+            } == 0
+        )
+    }
     
     private func loadData(
         using dataLoader: ImageDataLoader,
@@ -357,9 +463,18 @@ struct ImageDataLoaderTests {
 
 private final class ImageDataURLProtocolStub: URLProtocol {
 
+    private enum LoadingMode {
+        case immediate
+        case suspended
+    }
+
     private struct State {
         var requestCount = 0
+        var stopCount = 0
         var responseData = Data()
+        var loadingMode = LoadingMode.immediate
+        var requestStarted: ImageDataLoaderTestSignal?
+        var requestStopped: ImageDataLoaderTestSignal?
     }
 
     private static let state = Mutex(
@@ -372,12 +487,36 @@ private final class ImageDataURLProtocolStub: URLProtocol {
         }
     }
 
+    static var stopCount: Int {
+        state.withLock { state in
+            state.stopCount
+        }
+    }
+
     static func prepare(
         responseData: Data
     ) {
         state.withLock { state in
             state.requestCount = 0
+            state.stopCount = 0
             state.responseData = responseData
+            state.loadingMode = .immediate
+            state.requestStarted = nil
+            state.requestStopped = nil
+        }
+    }
+
+    static func prepareSuspended(
+        requestStarted: ImageDataLoaderTestSignal,
+        requestStopped: ImageDataLoaderTestSignal
+    ) {
+        state.withLock { state in
+            state.requestCount = 0
+            state.stopCount = 0
+            state.responseData = Data()
+            state.loadingMode = .suspended
+            state.requestStarted = requestStarted
+            state.requestStopped = requestStopped
         }
     }
 
@@ -394,10 +533,20 @@ private final class ImageDataURLProtocolStub: URLProtocol {
     }
 
     override func startLoading() {
-        let responseData = Self.state.withLock { state in
+        let configuration = Self.state.withLock { state in
             state.requestCount += 1
 
-            return state.responseData
+            return (
+                loadingMode: state.loadingMode,
+                responseData: state.responseData,
+                requestStarted: state.requestStarted
+            )
+        }
+
+        configuration.requestStarted?.signal()
+
+        guard configuration.loadingMode == .immediate else {
+            return
         }
 
         guard let url = request.url else {
@@ -431,7 +580,7 @@ private final class ImageDataURLProtocolStub: URLProtocol {
 
         client?.urlProtocol(
             self,
-            didLoad: responseData
+            didLoad: configuration.responseData
         )
 
         client?.urlProtocolDidFinishLoading(
@@ -439,5 +588,61 @@ private final class ImageDataURLProtocolStub: URLProtocol {
         )
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        let requestStopped = Self.state.withLock { state in
+            state.stopCount += 1
+
+            return state.requestStopped
+        }
+
+        requestStopped?.signal()
+    }
+}
+
+private final class ImageDataLoaderTestSignal: Sendable {
+
+    private struct State {
+        var isSignalled = false
+        var continuation: CheckedContinuation<Void, Never>?
+    }
+
+    private let state = Mutex(
+        State()
+    )
+
+    func signal() {
+        let continuation = state.withLock { state -> CheckedContinuation<Void, Never>? in
+            if let continuation = state.continuation {
+                state.continuation = nil
+
+                return continuation
+            }
+
+            state.isSignalled = true
+
+            return nil
+        }
+
+        continuation?.resume()
+    }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            let shouldResumeImmediately = state.withLock { state in
+                if state.isSignalled {
+                    state.isSignalled = false
+
+                    return true
+                }
+
+                state.continuation = continuation
+
+                return false
+            }
+
+            if shouldResumeImmediately {
+                continuation.resume()
+            }
+        }
+    }
 }
